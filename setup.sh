@@ -1,6 +1,7 @@
 #!/bin/bash
 
 set -e
+set +H  # Disable history expansion (fixes passwords with ! character)
 
 echo "==================================="
 echo "  Fitness Tracker Setup"
@@ -184,7 +185,27 @@ fi
 
 # Generate bcrypt hash using node in a container
 echo "Generating password hash..."
-HASH=$(printf '%s' "$ADMIN_PASSWORD" | docker run --rm -i node:20-alpine sh -c 'npm install -s bcrypt 2>/dev/null && node -e "let d=\"\";process.stdin.on(\"data\",c=>d+=c);process.stdin.on(\"end\",()=>require(\"bcrypt\").hash(d,10).then(h=>console.log(h)))"')
+set +e  # Temporarily disable exit on error
+
+# Base64 encode password to avoid shell escaping issues
+PW_BASE64=$(printf '%s' "$ADMIN_PASSWORD" | base64 -w0)
+
+HASH=$(docker run --rm -w /tmp node:20-alpine sh -c "
+  cd /tmp && npm install --silent bcryptjs >/dev/null 2>&1
+  node -e \"
+    const bcrypt = require('/tmp/node_modules/bcryptjs');
+    const pw = Buffer.from('$PW_BASE64', 'base64').toString();
+    console.log(bcrypt.hashSync(pw, 10));
+  \"
+" 2>&1)
+DOCKER_EXIT=$?
+set -e  # Re-enable exit on error
+
+if [ $DOCKER_EXIT -ne 0 ] || [ -z "$HASH" ] || [[ ! "$HASH" =~ ^\$2 ]]; then
+    echo -e "${RED}Failed to generate password hash${NC}"
+    echo "Error: $HASH"
+    exit 1
+fi
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     sed -i '' "s|ADMIN_PASSWORD_HASH=.*|ADMIN_PASSWORD_HASH=$HASH|" .env
