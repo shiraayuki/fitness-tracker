@@ -184,7 +184,7 @@ fi
 
 # Generate bcrypt hash using node in a container
 echo "Generating password hash..."
-HASH=$(docker run --rm -e "ADMIN_PWD=$ADMIN_PASSWORD" node:20-alpine sh -c 'npm install -s bcrypt 2>/dev/null && node -e "require(\"bcrypt\").hash(process.env.ADMIN_PWD, 10).then(h => console.log(h))"')
+HASH=$(printf '%s' "$ADMIN_PASSWORD" | docker run --rm -i node:20-alpine sh -c 'npm install -s bcrypt 2>/dev/null && node -e "let d=\"\";process.stdin.on(\"data\",c=>d+=c);process.stdin.on(\"end\",()=>require(\"bcrypt\").hash(d,10).then(h=>console.log(h)))"')
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
     sed -i '' "s|ADMIN_PASSWORD_HASH=.*|ADMIN_PASSWORD_HASH=$HASH|" .env
