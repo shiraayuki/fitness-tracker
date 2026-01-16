@@ -1,0 +1,91 @@
+version: '3.8'
+
+# Default configuration with embedded PostgreSQL
+# For external database, use: docker compose -f docker-compose.external.yml up -d
+
+services:
+  # PostgreSQL Database (embedded)
+  postgres:
+    image: postgres:15-alpine
+    container_name: fitness-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${DB_NAME:-fitness}
+      - POSTGRES_USER=${DB_USER:-fitness}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-fitness123}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/migrations:/docker-entrypoint-initdb.d:ro
+    networks:
+      - fitness-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-fitness} -d ${DB_NAME:-fitness}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: fitness-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=${DB_NAME:-fitness}
+      - DB_USER=${DB_USER:-fitness}
+      - DB_PASSWORD=${DB_PASSWORD:-fitness123}
+      - JWT_SECRET=${JWT_SECRET}
+      - ADMIN_PASSWORD_HASH=${ADMIN_PASSWORD_HASH}
+      - TOKEN_EXPIRY=${TOKEN_EXPIRY:-24h}
+      - PORT=3001
+    networks:
+      - fitness-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend React App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fitness-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - fitness-network
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: fitness-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+      - "8443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - backend
+    networks:
+      - fitness-network
+
+networks:
+  fitness-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
