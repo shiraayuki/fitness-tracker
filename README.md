@@ -14,8 +14,8 @@ A modern fitness tracking dashboard for visualizing workout, sleep, and weight d
 ## Quick Start
 
 ```bash
-git clone 
-cd fitness-tracker https://github.com/shiraayuki/fitness-tracker
+git clone https://github.com/shiraayuki/fitness-tracker
+cd fitness-tracker 
 chmod +x setup.sh
 ./setup.sh
 ```
